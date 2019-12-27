@@ -1,4 +1,4 @@
 default: test
 
 test:
-	@(go test -cover ./...)
+	@(go test -mod=vendor -cover ./...)
