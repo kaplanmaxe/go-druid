@@ -1,4 +1,4 @@
 default: test
 
 test:
-	@(go test -mod=vendor -cover ./...)
+	@(env GO111MODULE=on go test -cover ./...)
