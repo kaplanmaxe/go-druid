@@ -1,0 +1,5 @@
+language: go
+node_js:
+  - 1.13.X
+script:
+  - make test
