@@ -1,11 +1,15 @@
 package druid
 
 import (
+	"bytes"
 	"context"
 	"database/sql/driver"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"net/http"
+	"reflect"
 )
 
 var (
@@ -17,6 +21,14 @@ type connection struct {
 	Client *http.Client
 	Cfg    *Config
 }
+
+type queryRequest struct {
+	Query        string `json:"query"`
+	ResultFormat string `json:"resultFormat"`
+	Header       bool   `json:"header"`
+}
+
+type queryResponse [][]interface{}
 
 // Prepare implements db.Conn.Prepare and returns a noop statement
 func (c *connection) Prepare(stmt string) (driver.Stmt, error) {
@@ -47,4 +59,58 @@ func (c *connection) Ping(ctx context.Context) (err error) {
 		err = fmt.Errorf("druid: got %d status code from %s", res.StatusCode, c.Cfg.PingEndpoint)
 	}
 	return
+}
+
+// Query queries the druid sql api
+// TODO: fix error handling
+func (c *connection) Query(q string, args []driver.Value) (driver.Rows, error) {
+	return c.query(q, args)
+}
+
+func (c *connection) query(q string, args []driver.Value) (*rows, error) {
+	queryURL := fmt.Sprintf("%s%s", c.Cfg.BrokerAddr, c.Cfg.QueryEndpoint)
+	request := &queryRequest{
+		Query:        q,
+		ResultFormat: "array",
+		Header:       true,
+	}
+	req, err := json.Marshal(request)
+	if err != nil {
+		return &rows{}, errors.New("druid: Error marshalling query")
+	}
+	res, err := c.Client.Post(queryURL, "application/json", bytes.NewReader(req))
+	body, err := ioutil.ReadAll(res.Body)
+	if err != nil {
+		return &rows{}, err
+	}
+	var results queryResponse
+	json.Unmarshal(body, &results)
+	// No results returned
+	// TODO: pass back error from api
+	if len(results) == 0 {
+		return nil, errors.New("druid: no results returned")
+	}
+	var columnNames []string
+
+	for _, val := range results[0] {
+		// val := reflect.ValueOf(val).Convert(reflect.TypeOf(val))
+		columnNames = append(columnNames, val.(string))
+	}
+	var cols []field
+	for i := 1; i < len(results); i++ {
+		for _, val := range results[i] {
+			cols = append(cols, field{Value: reflect.ValueOf(val), Type: reflect.TypeOf(val)})
+		}
+	}
+
+	resultSet := resultSet{
+		columnNames: columnNames,
+		columns:     cols,
+		currentCol:  0,
+	}
+	r := &rows{
+		conn:      c,
+		resultSet: resultSet,
+	}
+	return r, nil
 }
