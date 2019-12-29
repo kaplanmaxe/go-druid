@@ -17,7 +17,8 @@ var cfg druid.Config = druid.Config{
 	// Passwd:       "druidPassword",
 }
 
-var mockQueryResults = `[["__time","channel"],["2015-09-12T00:46:58.771Z","#en.wikipedia"],["2015-09-12T00:47:00.496Z","#ca.wikipedia"],["2015-09-12T00:47:05.474Z","#en.wikipedia"],["2015-09-12T00:47:08.770Z","#vi.wikipedia"],["2015-09-12T00:47:11.862Z","#vi.wikipedia"],["2015-09-12T00:47:13.987Z","#vi.wikipedia"],["2015-09-12T00:47:17.009Z","#ca.wikipedia"],["2015-09-12T00:47:19.591Z","#en.wikipedia"],["2015-09-12T00:47:21.578Z","#en.wikipedia"],["2015-09-12T00:47:25.821Z","#vi.wikipedia"]]`
+// TODO: better method for constructing tests
+var mockQueryResults = `[["__time","added","channel"],["2015-09-12T00:46:58.771Z",36,"#en.wikipedia"],["2015-09-12T00:47:00.496Z",17,"#ca.wikipedia"],["2015-09-12T00:47:05.474Z",0,"#en.wikipedia"],["2015-09-12T00:47:08.770Z",18,"#vi.wikipedia"],["2015-09-12T00:47:11.862Z",18,"#vi.wikipedia"],["2015-09-12T00:47:13.987Z",18,"#vi.wikipedia"],["2015-09-12T00:47:17.009Z",0,"#ca.wikipedia"],["2015-09-12T00:47:19.591Z",345,"#en.wikipedia"],["2015-09-12T00:47:21.578Z",121,"#en.wikipedia"],["2015-09-12T00:47:25.821Z",18,"#vi.wikipedia"]]`
 
 func startMockServer(handler http.HandlerFunc) (ts *httptest.Server, url string) {
 	ts = httptest.NewServer(handler)
@@ -63,23 +64,27 @@ func TestQuery(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rows, err := db.Query("SELECT __time, channel FROM \"example\" LIMIT 10")
+	rows, err := db.Query("SELECT __time, added, channel FROM \"wikiticker-2015-09-12-sampled\" LIMIT 10")
 	if err != nil {
 		t.Fatal(err)
 	}
 	var channel string
 	var time string
+	var added int
 	var channels []string
 	var times []string
+	var addeds []int
 	for rows.Next() {
-		err := rows.Scan(&time, &channel)
+		err := rows.Scan(&time, &added, &channel)
 		if err != nil {
 			t.Error(err)
 		}
 		channels = append(channels, channel)
 		times = append(times, time)
+		addeds = append(addeds, added)
+		// TODO: construct test to check each property indiviudally by value
 	}
-	if len(times) == 0 || len(channels) == 0 {
+	if len(times) != 10 || len(channels) != 10 || len(addeds) != 10 {
 		t.Error("Did not fetch results properly")
 	}
 }
