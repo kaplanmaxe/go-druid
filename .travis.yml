@@ -2,4 +2,6 @@ language: go
 node_js:
   - 1.13.X
 script:
-  - make test
+  - make test-ci
+after_success:
+  - bash <(curl -s https://codecov.io/bash)
