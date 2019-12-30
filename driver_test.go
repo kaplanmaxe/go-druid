@@ -17,6 +17,23 @@ var cfg druid.Config = druid.Config{
 	// Passwd:       "druidPassword",
 }
 
+// type mockResults struct {
+// 	BoolTest    bool    `json:"bool_test"`
+// 	StringTest  string  `json:"string_test"`
+// 	IntTest     int     `json:"int_test"`
+// 	Int8Test    int8    `json:"int8_test"`
+// 	Int16Test   int16   `json:"int16_test"`
+// 	Int32Test   int32   `json:"int32_test"`
+// 	Int64Test   int64   `json:"int64_test"`
+// 	UintTest    uint    `json:"uint_test"`
+// 	Uint8Test   uint8   `json:"uint8_test"`
+// 	Uint16Test  uint16  `json:"uint16_test"`
+// 	Uint32Test  uint32  `json:"uint32_test"`
+// 	Uint64Test  uint64  `json:"uint64_test"`
+// 	Float32Test float32 `json:"float32_test"`
+// 	Float64Test float64 `json:"float64_test"`
+// }
+
 // TODO: better method for constructing tests
 var mockQueryResults = `[["__time","added","channel"],["2015-09-12T00:46:58.771Z",36,"#en.wikipedia"],["2015-09-12T00:47:00.496Z",17,"#ca.wikipedia"],["2015-09-12T00:47:05.474Z",0,"#en.wikipedia"],["2015-09-12T00:47:08.770Z",18,"#vi.wikipedia"],["2015-09-12T00:47:11.862Z",18,"#vi.wikipedia"],["2015-09-12T00:47:13.987Z",18,"#vi.wikipedia"],["2015-09-12T00:47:17.009Z",0,"#ca.wikipedia"],["2015-09-12T00:47:19.591Z",345,"#en.wikipedia"],["2015-09-12T00:47:21.578Z",121,"#en.wikipedia"],["2015-09-12T00:47:25.821Z",18,"#vi.wikipedia"]]`
 

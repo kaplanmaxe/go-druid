@@ -96,17 +96,19 @@ func (c *connection) query(q string, args []driver.Value) (*rows, error) {
 		// val := reflect.ValueOf(val).Convert(reflect.TypeOf(val))
 		columnNames = append(columnNames, val.(string))
 	}
-	var cols []field
+	var returnedRows [][]field
 	for i := 1; i < len(results); i++ {
+		var cols []field
 		for _, val := range results[i] {
 			cols = append(cols, field{Value: reflect.ValueOf(val), Type: reflect.TypeOf(val)})
 		}
+		returnedRows = append(returnedRows, cols)
 	}
 
 	resultSet := resultSet{
 		columnNames: columnNames,
-		columns:     cols,
-		currentCol:  0,
+		rows:        returnedRows,
+		currentRow:  0,
 	}
 	r := &rows{
 		conn:      c,
