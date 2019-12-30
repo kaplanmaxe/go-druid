@@ -32,7 +32,7 @@ type queryResponse [][]interface{}
 
 // Prepare implements db.Conn.Prepare and returns a noop statement
 func (c *connection) Prepare(stmt string) (driver.Stmt, error) {
-	return &statementNoop{}, nil
+	return &statementNoop{}, driver.ErrSkip
 }
 
 // Close closes a connection.
@@ -44,7 +44,7 @@ func (c *connection) Close() (err error) {
 // Begin implements db.Conn.Prepare and is a noop
 func (c *connection) Begin() (tx driver.Tx, err error) {
 	tx = &transactionNoop{}
-	return
+	return tx, driver.ErrSkip
 }
 
 // Ping implmements db.conn.Prepare and hits the health endpoint of a broker

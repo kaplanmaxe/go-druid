@@ -13,11 +13,19 @@ func init() {
 	sql.Register("druid", &Driver{})
 }
 
-// Open opens a new connection
+// Open opens a new connection and implements driver.Driver
 func (d *Driver) Open(dsn string) (driver.Conn, error) {
 	cfg := ParseDSN(dsn)
 	conn := &connector{
 		Cfg: cfg,
 	}
 	return conn.Connect(context.Background())
+}
+
+// OpenConnector implements driver.DriverContext
+func (d *Driver) OpenConnector(dsn string) (driver.Connector, error) {
+	cfg := ParseDSN(dsn)
+	return &connector{
+		Cfg: cfg,
+	}, nil
 }
