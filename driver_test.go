@@ -2,6 +2,7 @@ package druid_test
 
 import (
 	"database/sql"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -43,6 +44,16 @@ func startMockServer(handler http.HandlerFunc) (ts *httptest.Server, url string)
 	return
 }
 
+func constructMockResults(header []interface{}, rows [][]interface{}) (b []byte, err error) {
+	var mockResults [][]interface{}
+	mockResults = append(mockResults, header)
+	for _, val := range rows {
+		mockResults = append(mockResults, val)
+	}
+	b, err = json.Marshal(mockResults)
+	return
+}
+
 func TestConnect(t *testing.T) {
 	_, err := sql.Open("druid", cfg.FormatDSN())
 	if err != nil {
@@ -67,8 +78,11 @@ func TestPing(t *testing.T) {
 }
 
 func TestQuery(t *testing.T) {
+	header := []interface{}{"__time", "added", "channel"}
+	mockRows := [][]interface{}{{"2015-09-12T00:46:58.771Z", 36, "#en.wikipedia"}, {"2015-09-12T00:46:58.772Z", 76, "#ca.wikipedia"}}
+	output, _ := constructMockResults(header, mockRows)
 	ts, url := startMockServer(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(mockQueryResults))
+		w.Write(output)
 		w.Header().Add("Content-Type", "application/json")
 	})
 	defer ts.Close()
@@ -91,17 +105,27 @@ func TestQuery(t *testing.T) {
 	var channels []string
 	var times []string
 	var addeds []int
+	row := 0
 	for rows.Next() {
 		err := rows.Scan(&time, &added, &channel)
 		if err != nil {
 			t.Error(err)
 		}
+		if time != mockRows[row][0] {
+			t.Fatalf("Expecting %v got %v", mockRows[row][0], time)
+		}
+		if added != mockRows[row][1] {
+			t.Fatalf("Expecting %v got %v", mockRows[row][1], added)
+		}
+		if channel != mockRows[row][2] {
+			t.Fatalf("Expecting %v got %v", mockRows[row][2], channel)
+		}
 		channels = append(channels, channel)
 		times = append(times, time)
 		addeds = append(addeds, added)
-		// TODO: construct test to check each property indiviudally by value
+		row++
 	}
-	if len(times) != 10 || len(channels) != 10 || len(addeds) != 10 {
+	if len(times) != len(mockRows) || len(channels) != len(mockRows) || len(addeds) != len(mockRows) {
 		t.Error("Did not fetch results properly")
 	}
 }
