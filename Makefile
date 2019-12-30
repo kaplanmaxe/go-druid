@@ -4,6 +4,6 @@ test:
 	@(env GO111MODULE=on go test -cover ./...)
 
 test-ci:
-	(env GO111MODULE=on go test -coverprofile=coverage.txt ./...
+	(env GO111MODULE=on go test -coverprofile=coverage.txt ./...)
 
-.PHONY: test
+.PHONY: test test-ci
