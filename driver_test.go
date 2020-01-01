@@ -1,12 +1,14 @@
 package druid_test
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/kaplanmaxe/druid"
 )
@@ -18,29 +20,15 @@ var cfg druid.Config = druid.Config{
 	// Passwd:       "druidPassword",
 }
 
-// type mockResults struct {
-// 	BoolTest    bool    `json:"bool_test"`
-// 	StringTest  string  `json:"string_test"`
-// 	IntTest     int     `json:"int_test"`
-// 	Int8Test    int8    `json:"int8_test"`
-// 	Int16Test   int16   `json:"int16_test"`
-// 	Int32Test   int32   `json:"int32_test"`
-// 	Int64Test   int64   `json:"int64_test"`
-// 	UintTest    uint    `json:"uint_test"`
-// 	Uint8Test   uint8   `json:"uint8_test"`
-// 	Uint16Test  uint16  `json:"uint16_test"`
-// 	Uint32Test  uint32  `json:"uint32_test"`
-// 	Uint64Test  uint64  `json:"uint64_test"`
-// 	Float32Test float32 `json:"float32_test"`
-// 	Float64Test float64 `json:"float64_test"`
-// }
-
-// TODO: better method for constructing tests
-var mockQueryResults = `[["__time","added","channel"],["2015-09-12T00:46:58.771Z",36,"#en.wikipedia"],["2015-09-12T00:47:00.496Z",17,"#ca.wikipedia"],["2015-09-12T00:47:05.474Z",0,"#en.wikipedia"],["2015-09-12T00:47:08.770Z",18,"#vi.wikipedia"],["2015-09-12T00:47:11.862Z",18,"#vi.wikipedia"],["2015-09-12T00:47:13.987Z",18,"#vi.wikipedia"],["2015-09-12T00:47:17.009Z",0,"#ca.wikipedia"],["2015-09-12T00:47:19.591Z",345,"#en.wikipedia"],["2015-09-12T00:47:21.578Z",121,"#en.wikipedia"],["2015-09-12T00:47:25.821Z",18,"#vi.wikipedia"]]`
-
 func startMockServer(handler http.HandlerFunc) (ts *httptest.Server, url string) {
 	ts = httptest.NewServer(handler)
 	url = strings.Replace(ts.URL, "http://", "", 1)
+	return
+}
+
+func startMockUnstartedServer(handler http.HandlerFunc) (ts *httptest.Server, url string) {
+	ts = httptest.NewUnstartedServer(handler)
+	url = strings.Replace(ts.Listener.Addr().String(), "http://", "", 1)
 	return
 }
 
@@ -126,6 +114,78 @@ func TestQuery(t *testing.T) {
 		row++
 	}
 	if len(times) != len(mockRows) || len(channels) != len(mockRows) || len(addeds) != len(mockRows) {
+		t.Error("Did not fetch results properly")
+	}
+}
+
+func TestQueryContextWithCancel(t *testing.T) {
+	header := []interface{}{"__time"}
+	mockRows := [][]interface{}{{"2015-09-12T00:46:58.771Z"}, {"2015-09-12T00:46:58.772Z"}}
+	output, _ := constructMockResults(header, mockRows)
+	ts, url := startMockUnstartedServer(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(time.Second * 2)
+		w.Write(output)
+		w.Header().Add("Content-Type", "application/json")
+	})
+	ts.Start()
+	defer ts.Close()
+	cfg.BrokerAddr = url
+	db, err := sql.Open("druid", cfg.FormatDSN())
+	defer db.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = db.Ping()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	_, err = db.QueryContext(ctx, "SELECT __time FROM \"wikiticker-2015-09-12-sampled\" LIMIT 10")
+	if ctx.Err() != context.DeadlineExceeded {
+		t.Fatal(err)
+	}
+}
+
+func TestQueryWithoutCancellation(t *testing.T) {
+	header := []interface{}{"__time"}
+	mockRows := [][]interface{}{{"2015-09-12T00:46:58.771Z"}, {"2015-09-12T00:46:58.772Z"}}
+	output, _ := constructMockResults(header, mockRows)
+	ts, url := startMockServer(func(w http.ResponseWriter, r *http.Request) {
+		w.Write(output)
+		w.Header().Add("Content-Type", "application/json")
+	})
+	defer ts.Close()
+	cfg.BrokerAddr = url
+	db, err := sql.Open("druid", cfg.FormatDSN())
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = db.Ping()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Second)
+	defer cancel()
+	rows, err := db.QueryContext(ctx, "SELECT __time FROM \"wikiticker-2015-09-12-sampled\" LIMIT 10")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var time string
+	var times []string
+	row := 0
+	for rows.Next() {
+		err := rows.Scan(&time)
+		if err != nil {
+			t.Error(err)
+		}
+		if time != mockRows[row][0] {
+			t.Fatalf("Expecting %v got %v", mockRows[row][0], time)
+		}
+		times = append(times, time)
+		row++
+	}
+	if len(times) != len(mockRows) {
 		t.Error("Did not fetch results properly")
 	}
 }

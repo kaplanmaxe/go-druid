@@ -14,9 +14,15 @@ type connector struct {
 func (c *connector) Connect(ctx context.Context) (driver.Conn, error) {
 	client := &http.Client{}
 	connection := &connection{
-		Client: client,
-		Cfg:    c.Cfg,
+		Client:    client,
+		Cfg:       c.Cfg,
+		closeCh:   make(chan struct{}, 1),
+		watcherCh: make(chan context.Context, 1),
+		errorCh:   make(chan error),
+		resultsCh: make(chan []byte),
+		requestCh: make(chan *http.Request),
 	}
+	connection.startRequestPipeline()
 	return connection, nil
 }
 
