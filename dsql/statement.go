@@ -1,4 +1,4 @@
-package druid
+package dsql
 
 import (
 	"context"

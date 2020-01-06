@@ -1,4 +1,4 @@
-package druid_test
+package dsql_test
 
 import (
 	"context"
@@ -10,10 +10,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kaplanmaxe/druid"
+	"github.com/kaplanmaxe/druid/dsql"
 )
 
-var cfg druid.Config = druid.Config{
+var cfg dsql.Config = dsql.Config{
 	BrokerAddr:   "localhost:8082",
 	PingEndpoint: "/status/health",
 	// User:         "druidUsername",
@@ -62,6 +62,22 @@ func TestPing(t *testing.T) {
 	err = db.Ping()
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestPingWithError(t *testing.T) {
+	ts, url := startMockServer(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+	})
+	defer ts.Close()
+	cfg.BrokerAddr = url
+	db, err := sql.Open("druid", cfg.FormatDSN())
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = db.Ping()
+	if err != dsql.ErrPinging {
+		t.Fatal("expected ping error but did not receive")
 	}
 }
 
@@ -158,6 +174,7 @@ func TestQueryWithoutCancellation(t *testing.T) {
 	defer ts.Close()
 	cfg.BrokerAddr = url
 	db, err := sql.Open("druid", cfg.FormatDSN())
+	defer db.Close()
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -1,4 +1,4 @@
-package druid
+package dsql
 
 import (
 	"bytes"
@@ -81,7 +81,7 @@ func (c *connection) Ping(ctx context.Context) (err error) {
 	}
 	defer res.Body.Close()
 	if res.StatusCode != 200 {
-		err = fmt.Errorf("druid: got %d status code from %s", res.StatusCode, c.Cfg.PingEndpoint)
+		err = ErrPinging
 	}
 	return
 }
