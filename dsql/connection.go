@@ -19,6 +19,8 @@ var (
 	ErrPinging = errors.New("druid: error fetching health info from druid")
 	// ErrCancelled is an error returned when we receive a cancellation event from a context object
 	ErrCancelled = errors.New("druid: cancellation received")
+	// ErrRequestForm is an error returned when failing to form a request
+	ErrRequestForm = errors.New("druid: error forming request")
 )
 
 type key int
@@ -110,11 +112,10 @@ func (c *connection) startRequestPipeline() {
 
 // Query queries the druid sql api
 func (c *connection) Query(q string, args []driver.Value) (driver.Rows, error) {
-	return c.query(nil, q, args)
+	return c.query(q, args)
 }
 
-// TODO: better error hanlding
-func (c *connection) query(ctx context.Context, q string, args []driver.Value) (*rows, error) {
+func (c *connection) makeRequest(q string) (req *http.Request, err error) {
 	queryURL := fmt.Sprintf("%s%s", c.Cfg.BrokerAddr, c.Cfg.QueryEndpoint)
 	request := &queryRequest{
 		Query:        q,
@@ -123,27 +124,21 @@ func (c *connection) query(ctx context.Context, q string, args []driver.Value) (
 	}
 	payload, err := json.Marshal(request)
 	if err != nil {
-		return &rows{}, errors.New("druid: Error marshalling query")
+		return nil, ErrRequestForm
 	}
-	req, err := http.NewRequest("POST", queryURL, bytes.NewReader(payload))
+	req, err = http.NewRequest("POST", queryURL, bytes.NewReader(payload))
 	if err != nil {
-		return &rows{}, errors.New("druid: error making request")
+		return nil, ErrRequestForm
 	}
+	return
+}
 
-	res, err := c.Client.Do(req)
-	// If context was cancelled, return
-	if ctx.Err() != nil {
-		return &rows{}, ctx.Err()
-	}
-	if err != nil {
-		return &rows{}, err
-	}
-	body, err := ioutil.ReadAll(res.Body)
-	if err != nil {
-		return &rows{}, err
-	}
+func (c *connection) parseResponse(body []byte) (r *rows, err error) {
 	var results queryResponse
-	json.Unmarshal(body, &results)
+	err = json.Unmarshal(body, &results)
+	if err != nil {
+		return &rows{}, err
+	}
 	// No results returned
 	if len(results) == 0 {
 		return &rows{}, sql.ErrNoRows
@@ -167,25 +162,33 @@ func (c *connection) query(ctx context.Context, q string, args []driver.Value) (
 		rows:        returnedRows,
 		currentRow:  0,
 	}
-	r := &rows{
+	r = &rows{
 		conn:      c,
 		resultSet: resultSet,
 	}
 	return r, nil
 }
 
-func (c *connection) queryContext(ctx context.Context, q string, args []driver.NamedValue) (*rows, error) {
-	queryURL := fmt.Sprintf("%s%s", c.Cfg.BrokerAddr, c.Cfg.QueryEndpoint)
-	request := &queryRequest{
-		Query:        q,
-		ResultFormat: "array",
-		Header:       true,
-	}
-	payload, err := json.Marshal(request)
+// TODO: better error hanlding
+func (c *connection) query(q string, args []driver.Value) (*rows, error) {
+	req, err := c.makeRequest(q)
 	if err != nil {
-		return &rows{}, errors.New("druid: Error marshalling query")
+		return &rows{}, err
 	}
-	req, err := http.NewRequest("POST", queryURL, bytes.NewReader(payload))
+
+	res, err := c.Client.Do(req)
+	if err != nil {
+		return &rows{}, err
+	}
+	body, err := ioutil.ReadAll(res.Body)
+	if err != nil {
+		return &rows{}, err
+	}
+	return c.parseResponse(body)
+}
+
+func (c *connection) queryContext(ctx context.Context, q string, args []driver.NamedValue) (*rows, error) {
+	req, err := c.makeRequest(q)
 	if err != nil {
 		return &rows{}, errors.New("druid: error making request")
 	}
@@ -193,37 +196,12 @@ func (c *connection) queryContext(ctx context.Context, q string, args []driver.N
 	c.requestCh <- req
 	tr := &http.Transport{}
 	c.Client.Transport = tr
-	var rs resultSet
 	var r *rows
 	select {
 	case body := <-c.resultsCh:
-		var results queryResponse
-		json.Unmarshal(body, &results)
-		if len(results) == 0 {
-			return &rows{}, sql.ErrNoRows
-		}
-		var columnNames []string
-
-		for _, val := range results[0] {
-			columnNames = append(columnNames, val.(string))
-		}
-		var returnedRows [][]field
-		for i := 1; i < len(results); i++ {
-			var cols []field
-			for _, val := range results[i] {
-				cols = append(cols, field{Value: reflect.ValueOf(val), Type: reflect.TypeOf(val)})
-			}
-			returnedRows = append(returnedRows, cols)
-		}
-
-		rs = resultSet{
-			columnNames: columnNames,
-			rows:        returnedRows,
-			currentRow:  0,
-		}
-		r = &rows{
-			conn:      c,
-			resultSet: rs,
+		r, err = c.parseResponse(body)
+		if err != nil {
+			return r, err
 		}
 	case err = <-c.errorCh:
 	case <-ctx.Done():
@@ -238,10 +216,9 @@ func (c *connection) QueryContext(ctx context.Context, q string, args []driver.N
 	if err != nil {
 		return nil, err
 	}
-	// if context is not cancellable, perform normal query logic
-	// TODO: query() no longer needs context
+
 	if ctx.Done() == nil {
-		return c.query(ctx, q, vals)
+		return c.query(q, vals)
 	}
 	return c.queryContext(ctx, q, args)
 }
